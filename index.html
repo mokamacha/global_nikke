@@ -2,102 +2,67 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>니케 솔레이 3% 예측 통제실</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>니케 솔로레이드 3% 예측기</title>
     <style>
-        body { font-family: 'Apple SD Gothic Neo', sans-serif; background: #1a1a1a; color: white; text-align: center; }
-        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-        .card { background: #2d2d2d; border-radius: 15px; padding: 30px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        .score { font-size: 3em; color: #ff3e3e; font-weight: bold; margin: 10px 0; }
-        .info { color: #aaa; font-size: 0.9em; }
-        .btn { background: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px; }
+        body { font-family: 'Apple SD Gothic Neo', sans-serif; text-align: center; padding: 40px 20px; background: #121212; color: #e0e0e0; margin: 0; }
+        .container { max-width: 500px; margin: 0 auto; background: #1e1e1e; border-radius: 20px; padding: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #333; }
+        h2 { font-size: 1.5em; color: #ffffff; margin-bottom: 10px; }
+        .date-info { font-size: 0.9em; color: #888; margin-bottom: 30px; }
+        .score-box { background: #252525; border-radius: 15px; padding: 30px; margin-bottom: 30px; border: 1px solid #444; }
+        .score-title { font-size: 1.1em; color: #ffab00; margin-bottom: 10px; }
+        .score-value { font-size: 3.5em; color: #ff4757; font-weight: 800; letter-spacing: -1px; }
+        .unit { font-size: 0.4em; color: #aaa; margin-left: 5px; }
+        .btn { display: block; background: #3742fa; color: white; text-decoration: none; padding: 18px; border-radius: 12px; font-weight: bold; font-size: 1.1em; transition: 0.3s; }
+        .btn:hover { background: #5352ed; transform: translateY(-2px); }
+        #loading { font-style: italic; color: #666; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🏹 솔로레이드 3% 예측 통제실</h1>
+        <h2>🎯 글로벌 솔로레이드 3% 예측</h2>
+        <div class="date-info">종료일: 2026. 03. 27. 05:00 (KST)</div>
         
-        <div class="card">
-            <div class="info">현재 분석된 마감 예상 3% 컷</div>
-            <div id="predicted-score" class="score">계산 중...</div>
-            <div id="status" class="info">데이터 로딩 중...</div>
+        <div class="score-box">
+            <div class="score-title">현재 예상 마감 컷</div>
+            <div id="loading">데이터 분석 중...</div>
+            <div id="result" style="display:none;">
+                <span class="score-value" id="predicted-score">0.00</span>
+                <span class="unit">억 점</span>
+            </div>
         </div>
 
-        <div class="card">
-            <h3>📊 실시간 데이터 현황</h3>
-            <canvas id="raidChart"></canvas>
-            <a href="여기에_구글_설문지_링크를_넣으세요" target="_blank" class="btn">점수 제보하기 (익명)</a>
-        </div>
+        <a href="https://forms.gle/EYKoF3yAbnySNykF8" class="btn" target="_blank">익명 기록 제보하기</a>
+        <p style="margin-top: 20px; font-size: 0.8em; color: #555;">* 인구 12만 명 기준, 작열 메타 가중치 적용됨</p>
     </div>
 
     <script>
-        // ⚠️ 아래 URL을 방금 복사한 구글 시트 CSV 게시 주소로 바꾸세요!
-        const SHEET_CSV_URL = "여기에_구글시트_CSV_URL을_넣으세요";
-        const TOTAL_POP = 120000; // 대전제: 인구 12만
+        // ⚠️ 아래 주소에 구글 시트에서 복사한 .csv 주소를 붙여넣으세요.
+        const sheetUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQEkMg-QLbKh4mWI9Ex8bMkKp0A3YdPMFG4l6Ig1QerzAuWuP3V_ajV-6jd4ZkOUQNuK_SsLH96FU_B/pub?gid=830902786&single=true&output=csv";
 
-        async function updatePredictor() {
+        async function updateScore() {
             try {
-                const response = await fetch(SHEET_CSV_URL);
+                const response = await fetch(sheetUrl);
                 const data = await response.text();
-                const rows = data.split('\n').slice(1); // 헤더 제외
-
-                let reports = [];
-                rows.forEach(row => {
-                    const cols = row.split(',');
-                    if(cols.length >= 3) {
-                        let score = parseFloat(cols[1]); // 점수
-                        let rankRaw = parseFloat(cols[2]); // 등수 또는 %
-                        let percent = rankRaw > 1 ? (rankRaw / TOTAL_POP) * 100 : rankRaw;
-                        reports.push({ score, percent });
-                    }
-                });
-
-                if (reports.length < 3) {
-                    document.getElementById('predicted-score').innerText = "데이터 부족";
-                    document.getElementById('status').innerText = "최소 3개 이상의 제보가 필요합니다.";
-                    return;
-                }
-
-                // 3% 근처 데이터(2%~4%) 평균 추출
-                let nearThree = reports.filter(r => r.percent >= 2 && r.percent <= 4);
-                let current3Score = nearThree.length > 0 
-                    ? nearThree.reduce((a, b) => a + b.score, 0) / nearThree.length 
-                    : reports.sort((a,b) => Math.abs(a.percent-3) - Math.abs(b.percent-3))[0].score;
-
-                // 마감 시간(목요일 05시) 기준 인플레이션 가중치 적용 (시간당 0.2% 상승 가정)
-                // 실제로는 더 복잡한 곡선을 사용하지만, 일단 안정적인 예측을 위해 선형 보정 적용
-                let predicted = current3Score * 1.05; // 단순 예시: 현재 컷보다 5% 높게 마감된다고 가정
-
-                document.getElementById('predicted-score').innerText = predicted.toFixed(2) + "억";
-                document.getElementById('status').innerText = `제보 ${reports.length}건 분석 완료 (오차범위 ±2%)`;
+                const rows = data.split('\n');
                 
-                renderChart(reports);
+                // 분석 탭의 B4 셀 값 가져오기 (수정: 시트 구조에 따라 인덱스 확인 필요)
+                // 아래는 B4 셀(4행 2열)의 값을 가져오는 로직입니다.
+                const predictedScore = rows[3].split(',')[1]; 
+                
+                if(predictedScore && !isNaN(predictedScore)) {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('result').style.display = 'block';
+                    document.getElementById('predicted-score').innerText = parseFloat(predictedScore).toFixed(2);
+                }
             } catch (e) {
-                document.getElementById('status').innerText = "데이터 로드 실패: " + e.message;
+                document.getElementById('loading').innerText = "데이터 업데이트 중입니다...";
             }
         }
-
-        function renderChart(reports) {
-            const ctx = document.getElementById('raidChart').getContext('2d');
-            new Chart(ctx, {
-                type: 'scatter',
-                data: {
-                    datasets: [{
-                        label: '제보 데이터 점 분포',
-                        data: reports.map(r => ({ x: r.score, y: r.percent })),
-                        backgroundColor: '#ff3e3e'
-                    }]
-                },
-                options: {
-                    scales: {
-                        x: { title: { display: true, text: '점수 (억)' } },
-                        y: { reverse: true, title: { display: true, text: '상위 %' } }
-                    }
-                }
-            });
-        }
-
-        updatePredictor();
+        
+        updateScore();
+        // 5분마다 자동으로 데이터 갱신
+        setInterval(updateScore, 300000);
     </script>
 </body>
 </html>
